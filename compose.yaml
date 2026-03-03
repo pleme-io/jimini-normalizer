@@ -1,0 +1,16 @@
+services:
+  jimini-normalizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - RUST_LOG=info,jimini_normalizer=debug
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n' >&3 && cat <&3 | grep -q '\"ok\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
