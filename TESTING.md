@@ -1,77 +1,96 @@
 # Testing Strategy
 
-## Philosophy
+## What I Tested
 
-Tests verify **behavior, not implementation**. Each test answers a specific question:
-- Does this adapter correctly transform its source format?
-- Does the pipeline reject invalid data at the right stage?
-- Does the API return the correct HTTP semantics?
+### Provider Adapter Tests (`tests/provider_adapter_test.rs`) — 5 tests
 
-We avoid testing internal implementation details (private functions, struct layouts) and focus on the public contract: input → output.
+Each adapter's core transformation logic is tested against real fixture data:
 
-## Test Structure
+- **Provider A (nested JSON):** Parses nested `patient.id`, `assessment.scores{}` structure. Verifies 0-10 → 0-100 score scaling (anxiety 7 → 70, social 4 → 40). Confirms `source_format = "nested_json"` and correct field mapping.
+- **Provider B (flat KV):** Extracts dimensions from `score_*` prefixed keys. Verifies scores pass through without scaling (already 0-100). Confirms PHI fields (`patient_name`, `notes`) are excluded from output.
+- **Provider C (CSV):** Parses CSV rows, groups by `(patient_id, assessment_date, category)` into a single assessment. Verifies 0-10 → 0-100 metric scaling.
+- **Input validation:** Provider A rejects malformed JSON. Provider B rejects payloads with no `score_*` keys.
 
-### Provider Adapter Tests (`tests/provider_adapter_test.rs`)
+### Pipeline Tests (`tests/pipeline_test.rs`) — 5 tests
 
-**Purpose:** Verify each adapter correctly parses, scales, and maps its source format to the unified schema.
+The staged normalization pipeline is tested for correctness and data integrity:
 
-**What they test:**
-- Provider A: Nested JSON parsing, 0-10 → 0-100 score scaling, field mapping
-- Provider B: Flat KV parsing, no-op score scaling (already 0-100), date parsing
-- Provider C: CSV parsing, row grouping by patient/date/type, 0-10 → 0-100 scaling
-- Malformed input rejection
+- **Invalid input rejection:** Non-JSON input fails at the parse stage with a "parse error".
+- **Output validation:** Scores outside 0-100 range after scaling (e.g., input 15 on 0-10 scale → 150) are caught by output validation.
+- **Happy path:** Valid Provider B input passes all pipeline stages with scores in range.
+- **camelCase serialization:** Output JSON uses `patientId`, `assessmentDate`, `sourceProvider` — never snake_case.
+- **PHI non-propagation:** Patient names and dates of birth from input fixtures never appear in normalized output.
 
-**Why these are critical:** Adapters are the core business logic. If a score is scaled incorrectly or a date parsed wrong, every downstream consumer gets bad data. These tests use real fixture files to catch format regressions.
+### API Integration Tests (`tests/api_integration_test.rs`) — 8 tests
 
-### Pipeline Tests (`tests/pipeline_test.rs`)
+Full HTTP round-trips via `axum-test`:
 
-**Purpose:** Verify the staged pipeline correctly sequences validation → normalization → output validation, and that errors propagate with context.
+- **Health:** `GET /health` returns `{"status":"ok"}`.
+- **Normalize all 3 providers:** Each returns 200 with correct unified schema shape, correct `patientId`, `assessmentType`, score counts, and metadata.
+- **Unknown provider:** Returns 400.
+- **Round-trip persistence:** Normalize → `GET /assessments/:id` retrieves the same assessment by UUID.
+- **Batch partial failure:** `POST /normalize/batch` with one valid and one unknown provider returns 207 Multi-Status with `successes[1]` and `errors[1]`.
+- **Metrics:** `GET /metrics` returns Prometheus format with `jimini_http_requests_total` and `jimini_normalizations_total`.
 
-**What they test:**
-- Invalid input is rejected before normalization runs
-- Out-of-range scores (e.g., 150 after scaling) fail output validation
-- Valid input passes through all stages
+### Compose Integration Tests (`tests/compose_integration_test.sh`) — 48 assertions
 
-**Why these are critical:** The pipeline enforces data quality invariants. If output validation is skipped or runs in the wrong order, invalid data reaches consumers silently.
+End-to-end smoke tests against the Docker Compose service:
 
-### API Integration Tests (`tests/api_integration_test.rs`)
+- All 3 providers normalize correctly with score scaling verification
+- PHI fields never leak into responses (name, DOB)
+- camelCase output format verification
+- Error handling: unknown provider (400), malformed input (422)
+- Assessment CRUD: normalize → retrieve by ID → list all
+- Batch endpoint: 207 Multi-Status with mixed success/failure
+- Prometheus metrics endpoint serves expected counters
 
-**Purpose:** Verify HTTP semantics end-to-end — status codes, response shapes, and data persistence across requests.
+```bash
+# Run against already-running service
+./tests/compose_integration_test.sh
 
-**What they test:**
-- Health endpoint returns 200 with status/version
-- Single normalization returns 200 with correct unified assessments
-- Unknown provider returns 400
-- Normalized assessments are retrievable by ID (round-trip)
-- Batch endpoint returns 207 for partial failures with both successes and errors
+# Build, start, test, and tear down automatically
+COMPOSE_UP=1 ./tests/compose_integration_test.sh
+```
 
-**Why these are critical:** These are the tests a consumer would write against our API contract. They catch routing issues, serialization bugs, and state management problems that unit tests miss.
+## What I'd Test With More Time
 
-## What We Don't Test (and Why)
+- **Concurrency stress tests** — Parallel normalize requests to verify DashMap thread safety under load and check for race conditions in the in-memory store.
+- **Large batch processing** — Batches with 100+ records to verify memory behavior, response time degradation, and partial failure reporting at scale.
+- **Fuzz testing** — Property-based tests (proptest/quickcheck) generating random JSON/CSV payloads to find edge cases in parsing (empty strings, Unicode, extremely large numbers, negative scores, NaN/Infinity).
+- **Provider C edge cases** — CSV with mixed patient IDs across rows, missing columns, extra columns, different date formats, empty metric values.
+- **OTEL integration** — Verify distributed tracing spans are emitted correctly when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured (using a mock OTEL collector).
+- **PHI audit coverage** — Automated scanning of all response payloads to ensure no PII/PHI leaks beyond the explicit checks.
+- **Performance benchmarks** — Criterion benchmarks for each provider adapter to catch regressions in normalization throughput.
+- **Contract tests** — JSON Schema validation on API responses to enforce the unified output contract independently of the Rust types.
 
-- **Framework behavior** — We don't test that Axum routes correctly or that serde deserializes JSON. These are well-tested upstream dependencies.
-- **DashMap concurrency** — We don't test that concurrent inserts work. DashMap is battle-tested; our usage is straightforward.
-- **Tracing output** — We don't assert on log format. Log format is an operational concern, not a correctness concern.
+## How I Made This Testable
+
+1. **Trait-based provider abstraction** — `NormalizationProvider` is a trait with `validate_input()` and `normalize()` methods. Each provider implements pure transformations with no I/O, making them trivially unit-testable without mocking.
+
+2. **Pipeline as a pure function** — `NormalizationPipeline::run(&provider, &bytes)` is a static method that takes a provider and raw bytes, returning `Result<Vec<UnifiedAssessment>>`. No server, no state, no side effects — just input → output.
+
+3. **Fixture-driven tests** — Real sample data in `fixtures/` matches the PDF specification exactly. Tests use `include_bytes!` / `include_str!` to load them at compile time. Adding a new provider means adding one fixture file and the corresponding test assertions.
+
+4. **Separation of HTTP from business logic** — Handlers are thin: they extract the request, call the pipeline, and format the response. All business logic lives in providers and the pipeline, tested independently. The API integration tests verify HTTP semantics, not transformation correctness.
+
+5. **In-memory state with standard interface** — `AppState` wraps a `DashMap` behind simple `store()` / `get()` / `list()` methods. The `axum-test` `TestServer` gets a fresh `AppState` per test, providing test isolation without external dependencies.
+
+6. **Compose tests as a separate layer** — The shell-based compose tests run against the real Docker image, catching packaging/deployment issues (wrong binary, missing libraries, environment variable misconfiguration) that Rust unit/integration tests cannot.
 
 ## Running Tests
 
 ```bash
-# Run all tests
+# All Rust tests (18 tests)
 cargo test
 
-# Run a specific test suite
+# Specific test suite
 cargo test --test provider_adapter_test
 cargo test --test pipeline_test
 cargo test --test api_integration_test
 
-# Run with output
+# Compose integration tests (48 assertions)
+COMPOSE_UP=1 ./tests/compose_integration_test.sh
+
+# Verbose output
 cargo test -- --nocapture
 ```
-
-## Adding Tests for New Providers
-
-When adding a new provider:
-1. Add a fixture file in `fixtures/`
-2. Add adapter tests in `provider_adapter_test.rs` (parsing, scaling, field mapping)
-3. Add an integration test for the HTTP round-trip
-4. No pipeline test changes needed — the pipeline is provider-agnostic
