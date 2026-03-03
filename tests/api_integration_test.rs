@@ -33,10 +33,71 @@ async fn normalize_provider_a_returns_unified_assessment() {
         .await;
 
     response.assert_status_ok();
-    let assessments = response.json::<Vec<UnifiedAssessment>>();
-    assert_eq!(assessments.len(), 1);
-    assert_eq!(assessments[0].patient_id, "PAT-001");
-    assert_eq!(assessments[0].metadata.source_provider, "provider_a");
+    let body = response.json::<serde_json::Value>();
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+
+    let a = &arr[0];
+    // Verify camelCase output matching PDF unified schema
+    assert_eq!(a["patientId"], "P123");
+    assert_eq!(a["assessmentType"], "behavioral_screening");
+    assert_eq!(a["metadata"]["sourceProvider"], "provider_a");
+    assert_eq!(a["metadata"]["sourceFormat"], "nested_json");
+
+    // Scores are scaled 0-10 → 0-100
+    let scores = a["scores"].as_array().unwrap();
+    assert_eq!(scores.len(), 3);
+
+    // PHI is NOT in the output
+    let raw = serde_json::to_string(&a).unwrap();
+    assert!(!raw.contains("Jane Doe"));
+    assert!(!raw.contains("1990-05-15"));
+}
+
+#[tokio::test]
+async fn normalize_provider_b_extracts_score_prefix_keys() {
+    let server = test_server();
+    let input = include_str!("../fixtures/provider_b.json");
+
+    let response = server
+        .post("/normalize")
+        .add_query_param("provider", "provider_b")
+        .content_type("application/json")
+        .text(input)
+        .await;
+
+    response.assert_status_ok();
+    let body = response.json::<serde_json::Value>();
+    let a = &body.as_array().unwrap()[0];
+    assert_eq!(a["patientId"], "P123");
+    assert_eq!(a["assessmentType"], "cognitive");
+    assert_eq!(a["metadata"]["sourceFormat"], "flat_kv");
+
+    let scores = a["scores"].as_array().unwrap();
+    assert_eq!(scores.len(), 2); // score_memory and score_processing
+}
+
+#[tokio::test]
+async fn normalize_provider_c_csv_input() {
+    let server = test_server();
+    let input = include_str!("../fixtures/provider_c.csv");
+
+    let response = server
+        .post("/normalize")
+        .add_query_param("provider", "provider_c")
+        .content_type("text/csv")
+        .text(input)
+        .await;
+
+    response.assert_status_ok();
+    let body = response.json::<serde_json::Value>();
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+
+    let a = &arr[0];
+    assert_eq!(a["patientId"], "P123");
+    assert_eq!(a["assessmentType"], "behavioral");
+    assert_eq!(a["scores"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -56,12 +117,12 @@ async fn normalize_unknown_provider_returns_400() {
 #[tokio::test]
 async fn assessments_round_trip() {
     let server = test_server();
-    let input = include_str!("../fixtures/provider_b.json");
+    let input = include_str!("../fixtures/provider_a.json");
 
     // Normalize and store
     let response = server
         .post("/normalize")
-        .add_query_param("provider", "provider_b")
+        .add_query_param("provider", "provider_a")
         .content_type("application/json")
         .text(input)
         .await;
@@ -74,7 +135,7 @@ async fn assessments_round_trip() {
     response.assert_status_ok();
     let retrieved = response.json::<UnifiedAssessment>();
     assert_eq!(retrieved.id, id);
-    assert_eq!(retrieved.patient_id, "PAT-002");
+    assert_eq!(retrieved.patient_id, "P123");
 }
 
 #[tokio::test]
@@ -85,10 +146,9 @@ async fn batch_normalize_with_partial_failure() {
         {
             "provider": "provider_b",
             "data": {
-                "patient_id": "PAT-010",
-                "assessment_date": "2024-01-01T00:00:00Z",
-                "assessment_type": "GAD-7",
-                "scores": { "anxiety": 50.0 }
+                "patient_id": "P456",
+                "assessment_type": "cognitive",
+                "score_memory": 90
             }
         },
         {
@@ -108,4 +168,24 @@ async fn batch_normalize_with_partial_failure() {
     let body = response.json::<serde_json::Value>();
     assert_eq!(body["successes"].as_array().unwrap().len(), 1);
     assert_eq!(body["errors"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn metrics_endpoint_returns_prometheus_format() {
+    let server = test_server();
+
+    // Make a request first so metrics have data
+    let input = include_str!("../fixtures/provider_a.json");
+    server
+        .post("/normalize")
+        .add_query_param("provider", "provider_a")
+        .content_type("application/json")
+        .text(input)
+        .await;
+
+    let response = server.get("/metrics").await;
+    response.assert_status_ok();
+    let body = response.text();
+    assert!(body.contains("jimini_http_requests_total"));
+    assert!(body.contains("jimini_normalizations_total"));
 }

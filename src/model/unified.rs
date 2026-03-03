@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::error::{AppError, FieldError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnifiedAssessment {
     pub id: Uuid,
     pub patient_id: String,
@@ -22,6 +23,7 @@ pub struct Score {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AssessmentMetadata {
     pub source_provider: String,
     pub source_format: String,
@@ -35,15 +37,15 @@ impl UnifiedAssessment {
 
         if self.patient_id.is_empty() {
             errors.push(FieldError {
-                field: "patient_id".into(),
-                message: "patient_id is required".into(),
+                field: "patientId".into(),
+                message: "patientId is required".into(),
             });
         }
 
         if self.assessment_type.is_empty() {
             errors.push(FieldError {
-                field: "assessment_type".into(),
-                message: "assessment_type is required".into(),
+                field: "assessmentType".into(),
+                message: "assessmentType is required".into(),
             });
         }
 

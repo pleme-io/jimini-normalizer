@@ -1,14 +1,16 @@
 {
   "patient": {
-    "id": "PAT-001"
+    "id": "P123",
+    "name": "Jane Doe",
+    "dob": "1990-05-15"
   },
   "assessment": {
-    "date": "2024-11-15T10:30:00Z",
-    "type": "PHQ-9",
-    "scores": [
-      { "category": "mood", "value": 7.5 },
-      { "category": "sleep", "value": 4.0 },
-      { "category": "energy", "value": 6.0 }
-    ]
+    "type": "behavioral_screening",
+    "scores": {
+      "anxiety": 7,
+      "social": 4,
+      "attention": 6
+    },
+    "notes": "Patient showed improvement in social engagement"
   }
 }

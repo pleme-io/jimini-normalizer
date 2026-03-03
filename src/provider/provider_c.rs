@@ -9,7 +9,8 @@ use crate::model::unified::{AssessmentMetadata, Score, UnifiedAssessment};
 use crate::provider::NormalizationProvider;
 
 /// Provider C: CSV format with scores on a 0-10 scale.
-/// Multiple rows may belong to the same patient/date/type combination.
+/// Multiple rows may belong to the same patient/date/category combination.
+/// Columns: patient_id, assessment_date, metric_name, metric_value, category
 pub struct ProviderC;
 
 impl NormalizationProvider for ProviderC {
@@ -36,13 +37,13 @@ impl NormalizationProvider for ProviderC {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::ParseError(e.to_string()))?;
 
-        // Group rows by (patient_id, date, assessment_type)
+        // Group rows by (patient_id, assessment_date, category)
         let mut groups: HashMap<(String, String, String), Vec<ProviderCRow>> = HashMap::new();
         for row in rows {
             let key = (
                 row.patient_id.clone(),
-                row.date.clone(),
-                row.assessment_type.clone(),
+                row.assessment_date.clone(),
+                row.category.clone(),
             );
             groups.entry(key).or_default().push(row);
         }
@@ -50,9 +51,9 @@ impl NormalizationProvider for ProviderC {
         let now = Utc::now();
         let mut assessments = Vec::new();
 
-        for ((patient_id, date_str, assessment_type), rows) in groups {
-            // Parse MM/DD/YYYY date format
-            let naive = NaiveDate::parse_from_str(&date_str, "%m/%d/%Y")
+        for ((patient_id, date_str, category), rows) in groups {
+            // Parse YYYY-MM-DD date format (as shown in PDF)
+            let naive = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
                 .map_err(|e| AppError::ParseError(format!("invalid date '{date_str}': {e}")))?;
             let assessment_date = naive
                 .and_hms_opt(0, 0, 0)
@@ -62,8 +63,8 @@ impl NormalizationProvider for ProviderC {
             let scores = rows
                 .into_iter()
                 .map(|r| Score {
-                    dimension: r.dimension,
-                    value: r.score * 10.0, // 0-10 → 0-100
+                    dimension: r.metric_name,
+                    value: r.metric_value * 10.0, // 0-10 → 0-100
                     scale: "0-100".to_string(),
                 })
                 .collect();
@@ -72,7 +73,7 @@ impl NormalizationProvider for ProviderC {
                 id: Uuid::new_v4(),
                 patient_id,
                 assessment_date,
-                assessment_type,
+                assessment_type: category,
                 scores,
                 metadata: AssessmentMetadata {
                     source_provider: self.name().to_string(),
