@@ -1,0 +1,67 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: jimini-normalizer
+  namespace: jimini-normalizer-system
+spec:
+  releaseName: jimini-normalizer
+  chart:
+    spec:
+      chart: ./chart/jimini-normalizer
+      sourceRef:
+        kind: GitRepository
+        name: jimini-normalizer
+        namespace: flux-system
+      interval: 5m
+  interval: 5m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    image:
+      repository: ghcr.io/pleme-io/jimini-normalizer
+      tag: latest
+
+    env:
+      - name: PORT
+        value: "8080"
+      - name: RUST_LOG
+        value: "info,jimini_normalizer=debug"
+      # OTEL — enable distributed tracing when Tempo is available
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "http://tempo.observability.svc.cluster.local:4318"
+      - name: DEPLOYMENT_ENV
+        value: "staging"
+      - name: SERVICE_VERSION
+        value: "0.1.0"
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Monitoring
+    monitoring:
+      enabled: true
+      port: metrics
+      path: /metrics
+      interval: 30s
+
+    prometheusRules:
+      enabled: true
+
+    # Network — allow Prometheus + DNS
+    networkPolicy:
+      enabled: true
+      allowPrometheus: true
+      allowDns: true
+
+    # Downward API for pod metadata in logs
+    downwardApi:
+      enabled: true

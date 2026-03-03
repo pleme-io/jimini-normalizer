@@ -1,0 +1,11 @@
+apiVersion: v2
+name: jimini-normalizer
+description: Multi-Provider Data Normalization Service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: pleme-lib
+    version: "~0.4.0"
+    repository: "https://pleme-io.github.io/helmworks"

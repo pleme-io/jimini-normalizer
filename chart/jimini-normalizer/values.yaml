@@ -1,0 +1,220 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/pleme-io/jimini-normalizer
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+ports:
+  - name: http
+    containerPort: 8080
+    protocol: TCP
+  - name: metrics
+    containerPort: 9090
+    protocol: TCP
+
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+
+env:
+  - name: PORT
+    value: "8080"
+  - name: RUST_LOG
+    value: "info,jimini_normalizer=debug"
+
+envFrom: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Probes target the http port (8080)
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 2
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  failureThreshold: 30
+
+# Security baseline
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Monitoring — ServiceMonitor for Prometheus scrape
+monitoring:
+  enabled: true
+  port: metrics
+  path: /metrics
+  interval: 30s
+  scrapeTimeout: 10s
+
+# PodMonitor (for direct pod metrics if needed)
+podMonitor:
+  enabled: false
+
+# PrometheusRules — RED metrics, SLOs, alerts
+prometheusRules:
+  enabled: true
+  groups:
+    - name: jimini-normalizer.slo
+      rules:
+        # SLO target: 99.9% availability
+        - record: jimini_normalizer:slo_target
+          expr: "0.999"
+
+        # Error budget remaining (30d window)
+        - record: jimini_normalizer:slo_error_budget_remaining
+          expr: |
+            1 - (
+              sum(rate(jimini_http_requests_total{status=~"5.."}[30d]))
+              / sum(rate(jimini_http_requests_total[30d]))
+            ) / (1 - 0.999)
+
+        # 5m rolling error rate
+        - record: jimini_normalizer:error_rate_5m
+          expr: |
+            sum(rate(jimini_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(jimini_http_requests_total[5m]))
+
+        # 5m rolling request rate
+        - record: jimini_normalizer:request_rate_5m
+          expr: sum(rate(jimini_http_requests_total[5m]))
+
+        # P99 latency (5m window)
+        - record: jimini_normalizer:latency_p99_5m
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le)
+            )
+
+    - name: jimini-normalizer.alerts
+      rules:
+        # Fast burn — critical: >5% error rate for 2m
+        - alert: JiminiNormalizerHighErrorRate
+          expr: |
+            sum(rate(jimini_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(jimini_http_requests_total[5m])) > 0.05
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "jimini-normalizer error rate exceeds 5%"
+            description: "Error rate is {{ $value | humanizePercentage }}"
+
+        # Slow burn — warning: >1% error rate for 15m
+        - alert: JiminiNormalizerElevatedErrorRate
+          expr: |
+            sum(rate(jimini_http_requests_total{status=~"5.."}[15m]))
+            / sum(rate(jimini_http_requests_total[15m])) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "jimini-normalizer elevated error rate"
+            description: "Error rate is {{ $value | humanizePercentage }}"
+
+        # High P99 latency
+        - alert: JiminiNormalizerHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le)
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "jimini-normalizer P99 latency exceeds 1s"
+            description: "P99 latency is {{ $value }}s"
+
+        # Normalization failure rate
+        - alert: JiminiNormalizerHighFailureRate
+          expr: |
+            sum(rate(jimini_normalizations_total{status="error"}[5m]))
+            / sum(rate(jimini_normalizations_total[5m])) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "jimini-normalizer normalization failure rate exceeds 10%"
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  allowPrometheus: true
+  allowDns: true
+  additionalIngress: []
+  additionalEgress: []
+
+# PDB
+pdb:
+  enabled: false
+
+# HPA
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+# Downward API
+downwardApi:
+  enabled: true
+
+# Istio
+istio:
+  enabled: false
+
+# ConfigMaps
+configMaps: []
+
+# Additional
+nodeSelector: {}
+tolerations: []
+affinity: {}
+additionalLabels: {}
+podAnnotations: {}
