@@ -1,0 +1,10 @@
+{
+  "patient_id": "PAT-002",
+  "assessment_date": "2024-11-15T14:00:00Z",
+  "assessment_type": "GAD-7",
+  "scores": {
+    "anxiety": 65.0,
+    "worry": 80.0,
+    "restlessness": 45.0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "patient": {
+    "id": "PAT-001"
+  },
+  "assessment": {
+    "date": "2024-11-15T10:30:00Z",
+    "type": "PHQ-9",
+    "scores": [
+      { "category": "mood", "value": 7.5 },
+      { "category": "sleep", "value": 4.0 },
+      { "category": "energy", "value": 6.0 }
+    ]
+  }
+}

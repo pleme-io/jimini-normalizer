@@ -1,0 +1,4 @@
+patient_id,date,assessment_type,dimension,score
+PAT-003,11/15/2024,BDI-II,mood,8.0
+PAT-003,11/15/2024,BDI-II,cognition,5.5
+PAT-003,11/15/2024,BDI-II,physical,7.0
