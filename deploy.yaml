@@ -42,6 +42,7 @@ novasearch:
 
 # Migration handled by Shinka operator (not forge)
 migration:
+  database_type: none
   shinka_gating: false
 
 # K8s manifest paths (relative to k8s repo root)
