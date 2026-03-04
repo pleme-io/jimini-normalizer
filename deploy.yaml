@@ -48,6 +48,6 @@ migration:
 # K8s manifest paths (relative to k8s repo root)
 manifests:
   staging:
-    kustomization: clusters/plo/products/jimini-normalizer/staging/kustomization.yaml
+    kustomization: clusters/plo/products/jimini-normalizer/staging/helm/jimini-normalizer.yaml
   production:
-    kustomization: clusters/plo/products/jimini-normalizer/production/kustomization.yaml
+    kustomization: clusters/plo/products/jimini-normalizer/production/helm/jimini-normalizer.yaml
