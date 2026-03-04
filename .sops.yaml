@@ -1,0 +1,15 @@
+creation_rules:
+  # Encrypt only data/stringData fields in Secret YAMLs.
+  # Kustomize label/namespace transformers run BEFORE FluxCD decryption,
+  # so metadata MUST remain unencrypted.
+  #
+  # Age key backends:
+  #   - Local: age private key at ~/.config/sops/age/keys.txt
+  #   - GCP KMS: set SOPS_GCP_KMS_IDS env var or add gcp_kms field below
+  #
+  # To use GCP KMS instead of (or alongside) age:
+  #   gcp_kms: projects/PROJECT_ID/locations/LOCATION/keyRings/KEYRING/cryptoKeys/KEY
+  #
+  - path_regex: deploy/secrets/.*\.yaml$
+    age: age1q3tep4cc4d89y0ajd9ywafmarq69202z3za48rhcdra0ya579ews56awfd
+    encrypted_regex: "^(data|stringData)$"

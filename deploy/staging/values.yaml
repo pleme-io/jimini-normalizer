@@ -1,0 +1,124 @@
+# Staging environment overrides for jimini-normalizer
+# Applied via FluxCD HelmRelease valuesFrom or Kustomize patch
+
+replicaCount: 1
+
+image:
+  tag: latest
+
+env:
+  - name: RUN_MODE
+    value: "api"
+  - name: CONFIG_PATH
+    value: "/etc/jimini-normalizer/config.yaml"
+  - name: RUST_LOG
+    value: "debug,jimini_normalizer=debug"
+  - name: DEPLOYMENT_ENV
+    value: "staging"
+
+worker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+configMaps:
+  - name: jimini-normalizer-config
+    data:
+      config.yaml: |
+        server:
+          host: "0.0.0.0"
+          port: 8080
+          metrics_port: 9090
+        database:
+          max_connections: 5
+          min_connections: 1
+          connect_timeout_secs: 30
+          idle_timeout_secs: 300
+        nats:
+          stream_name: JIMINI_ASSESSMENTS
+          error_stream_name: JIMINI_ERRORS
+          consumer_name: jimini-normalizer
+          durable: true
+          pull_batch_size: 5
+          max_ack_pending: 100
+          ack_wait_secs: 30
+          max_deliver: 5
+        batch:
+          buffer_size: 50
+          cleanup_after_batches: 10
+          max_concurrent_emits: 25
+        retry:
+          max_attempts: 3
+          base_delay_ms: 100
+          max_delay_ms: 5000
+        worker:
+          shutdown_timeout_secs: 30
+          max_concurrent: 5
+          health_check_interval_secs: 10
+        batch:
+          buffer_size: 50
+          cleanup_after_batches: 10
+          max_concurrent_emits: 25
+        retry:
+          max_attempts: 3
+          base_delay_ms: 100
+          max_delay_ms: 5000
+        retention:
+          days: 30
+        logging:
+          level: "debug,jimini_normalizer=debug"
+          format: "json"
+        pii:
+          enabled: true
+          patient_id_strategy: hash
+          raw_input_strategy: hash
+          provider_fields:
+            provider_a:
+              - field: name
+                strategy: redact
+              - field: dob
+                strategy: redact
+            provider_b:
+              - field: patient_name
+                strategy: redact
+          internal:
+            allow_internal_pii: true
+            store_patient_id_plaintext: true
+            store_raw_for_replay: true
+
+# Monitoring — enabled but relaxed thresholds
+monitoring:
+  enabled: true
+  interval: 60s
+
+prometheusRules:
+  enabled: true
+
+dashboards:
+  enabled: true
+  crd:
+    enabled: true
+    folder: "Jimini Normalizer (Staging)"
+
+networkPolicy:
+  enabled: false
+
+pdb:
+  enabled: false
+
+autoscaling:
+  enabled: false

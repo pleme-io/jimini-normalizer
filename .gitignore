@@ -3,3 +3,9 @@
 *.swo
 .direnv/
 result
+.claude/
+.mcp.json
+*.tgz
+chart/*/charts/
+dist/
+deploy/secrets/

@@ -7,10 +7,12 @@ spec:
   releaseName: jimini-normalizer
   chart:
     spec:
-      chart: ./chart/jimini-normalizer
+      # OCI-published chart from pleme-charts registry
+      chart: jimini-normalizer
+      version: "0.1.0"
       sourceRef:
-        kind: GitRepository
-        name: jimini-normalizer
+        kind: HelmRepository
+        name: pleme-charts
         namespace: flux-system
       interval: 5m
   interval: 5m
@@ -23,20 +25,32 @@ spec:
   values:
     image:
       repository: ghcr.io/pleme-io/jimini-normalizer
+      # Image tag is pinned per-environment in the k8s repo's HelmRelease overlay.
+      # Format: amd64-{git-sha-short}
       tag: latest
 
     env:
-      - name: PORT
-        value: "8080"
+      - name: RUN_MODE
+        value: "api"
+      - name: CONFIG_PATH
+        value: "/etc/jimini-normalizer/config.yaml"
       - name: RUST_LOG
         value: "info,jimini_normalizer=debug"
-      # OTEL — enable distributed tracing when Tempo is available
+      # OTEL — distributed tracing when Tempo is available
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: "http://tempo.observability.svc.cluster.local:4318"
       - name: DEPLOYMENT_ENV
         value: "staging"
       - name: SERVICE_VERSION
         value: "0.1.0"
+
+    # Secrets injected from SOPS-encrypted Secrets (decrypted by FluxCD)
+    # figment auto-maps DATABASE_URL → database.url, NATS_URL → nats.url
+    envFrom:
+      - secretRef:
+          name: jimini-normalizer-db
+      - secretRef:
+          name: jimini-normalizer-nats
 
     resources:
       requests:
@@ -45,6 +59,11 @@ spec:
       limits:
         cpu: 200m
         memory: 256Mi
+
+    # Worker
+    worker:
+      enabled: true
+      replicaCount: 1
 
     # Monitoring
     monitoring:
@@ -56,12 +75,38 @@ spec:
     prometheusRules:
       enabled: true
 
-    # Network — allow Prometheus + DNS
+    # Dashboards
+    dashboards:
+      enabled: true
+      crd:
+        enabled: true
+
+    # Network — allow Prometheus + DNS + Postgres + NATS egress
     networkPolicy:
       enabled: true
       allowPrometheus: true
       allowDns: true
+      additionalEgress:
+        - to:
+            - namespaceSelector: {}
+          ports:
+            - port: 5432
+              protocol: TCP
+        - to:
+            - namespaceSelector: {}
+          ports:
+            - port: 4222
+              protocol: TCP
 
     # Downward API for pod metadata in logs
     downwardApi:
       enabled: true
+
+    # CronJobs
+    retention:
+      enabled: true
+      schedule: "0 3 * * *"
+
+    auditChecker:
+      enabled: true
+      schedule: "*/10 * * * *"

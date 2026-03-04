@@ -1,0 +1,701 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Service Health",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.99 },
+              { "color": "green", "value": 0.999 }
+            ]
+          },
+          "unit": "percentunit",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Availability (5m)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(jimini_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(jimini_http_requests_total[5m])))",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Request Rate",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(rate(jimini_http_requests_total[5m]))", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Error Rate (5m)",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(rate(jimini_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(jimini_http_requests_total[5m]))", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 1 }] },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "P99 Latency",
+      "type": "stat",
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Failed Records Pending",
+      "type": "stat",
+      "targets": [
+        { "expr": "jimini_failed_records_pending", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Schema Violations (1h)",
+      "type": "stat",
+      "targets": [
+        { "expr": "jimini_schema_violations_recent", "legendFormat": "" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "RED Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Request Rate by Path",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (path) (rate(jimini_http_requests_total[5m]))", "legendFormat": "{{ path }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "min": 0, "max": 1 }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "id": 11,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Error Rate by Path",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (path) (rate(jimini_http_requests_total{status=~\"5..\"}[5m])) / sum by (path) (rate(jimini_http_requests_total[5m]))", "legendFormat": "{{ path }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "id": 12,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Latency Percentiles",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Normalization Pipeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "id": 20,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Normalizations by Provider",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (provider) (rate(jimini_normalizations_total{status=\"success\"}[5m]))", "legendFormat": "{{ provider }} (ok)" },
+        { "expr": "sum by (provider) (rate(jimini_normalizations_total{status=\"error\"}[5m]))", "legendFormat": "{{ provider }} (err)" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "id": 21,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Assessments Stored Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(jimini_assessments_stored_total[5m])", "legendFormat": "stored/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "id": 22,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Normalization Failure Rate by Provider",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (provider) (rate(jimini_normalizations_total{status=\"error\"}[5m])) / sum by (provider) (rate(jimini_normalizations_total[5m]))", "legendFormat": "{{ provider }}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "NATS JetStream",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "id": 30,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Consumer Pending Messages",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "nats_consumer_num_pending{stream_name=~\"JIMINI_.*\"}", "legendFormat": "{{ stream_name }} / {{ consumer_name }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "id": 31,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Stream Message Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(nats_stream_total_messages{stream_name=~\"JIMINI_.*\"}[5m])", "legendFormat": "{{ stream_name }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "id": 32,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Consumer Ack / Redelivery Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(nats_consumer_num_ack_pending{stream_name=~\"JIMINI_.*\"}[5m])", "legendFormat": "{{ consumer_name }} ack-pending" },
+        { "expr": "rate(nats_consumer_num_redelivered{stream_name=~\"JIMINI_.*\"}[5m])", "legendFormat": "{{ consumer_name }} redelivered" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 104,
+      "title": "Audit & Data Quality",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 33 },
+      "id": 40,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Failed Records Pending",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "jimini_failed_records_pending", "legendFormat": "pending" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "custom": { "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 33 },
+      "id": 41,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Schema Violations (Last Hour)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "jimini_schema_violations_recent", "legendFormat": "violations" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 33 },
+      "id": 42,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Outbox Status",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "jimini_outbox_pending", "legendFormat": "pending" },
+        { "expr": "jimini_outbox_failed", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 105,
+      "title": "SLO Burn Rate",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0 }, { "color": "green", "value": 0.5 }] },
+          "unit": "percentunit", "min": -1, "max": 1
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 42 },
+      "id": 50,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Error Budget Remaining (30d)",
+      "type": "stat",
+      "targets": [
+        { "expr": "jimini_normalizer:slo_error_budget_remaining", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 42 },
+      "id": 51,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Error Rate Windows",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "jimini_normalizer:error_rate_5m", "legendFormat": "5m" },
+        { "expr": "sum(rate(jimini_http_requests_total{status=~\"5..\"}[1h])) / sum(rate(jimini_http_requests_total[1h]))", "legendFormat": "1h" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 42 },
+      "id": 52,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Latency SLI Trend",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "jimini_normalizer:latency_p99_5m", "legendFormat": "p99 (5m)" },
+        { "expr": "histogram_quantile(0.95, sum(rate(jimini_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95 (5m)" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
+      "id": 106,
+      "title": "Worker & Outbox Pipeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 51 },
+      "id": 60,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Worker Throughput",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (stream, status) (rate(jimini_worker_messages_total[5m]))", "legendFormat": "{{ stream }}/{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 51 },
+      "id": 61,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Outbox Processing",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (status) (rate(jimini_outbox_processed_total[5m]))", "legendFormat": "{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 51 },
+      "id": 62,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Outbox Worker Restarts",
+      "type": "stat",
+      "targets": [
+        { "expr": "jimini_outbox_restarts_total", "legendFormat": "" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 51 },
+      "id": 63,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Poison Messages",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(jimini_worker_messages_total{status=\"poison\"}[5m]))", "legendFormat": "worker" },
+        { "expr": "sum(rate(jimini_outbox_processed_total{status=\"poison\"}[5m]))", "legendFormat": "outbox" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 59 },
+      "id": 107,
+      "title": "PostgresSink & Data Persistence",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 60 },
+      "id": 70,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "PostgresSink Latency",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(jimini_postgres_sink_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(jimini_postgres_sink_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(jimini_postgres_sink_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 60 },
+      "id": 71,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "PostgresSink Errors",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (error_type) (rate(jimini_postgres_sink_errors_total[5m]))", "legendFormat": "{{ error_type }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 60 },
+      "id": 72,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "PostgresSink Retries",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(jimini_postgres_sink_retries_total[5m])", "legendFormat": "retries/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 },
+      "id": 108,
+      "title": "External Sink Delivery",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 69 },
+      "id": 80,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Sink Delivery Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (sink, status) (rate(jimini_sink_delivery_total[5m]))", "legendFormat": "{{ sink }}/{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 69 },
+      "id": 81,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Sink Latency by Sink",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le, sink) (rate(jimini_sink_delivery_duration_seconds_bucket[5m])))", "legendFormat": "{{ sink }} p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le, sink) (rate(jimini_sink_delivery_duration_seconds_bucket[5m])))", "legendFormat": "{{ sink }} p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le, sink) (rate(jimini_sink_delivery_duration_seconds_bucket[5m])))", "legendFormat": "{{ sink }} p99" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 69 },
+      "id": 82,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Dead Letters",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(jimini_dead_letters_total[5m])", "legendFormat": "dead letters/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 77 },
+      "id": 109,
+      "title": "NATS & Sweeper",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 78 },
+      "id": 90,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "NATS Publish Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (stream, status) (rate(jimini_nats_publish_total[5m]))", "legendFormat": "{{ stream }}/{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 78 },
+      "id": 91,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "NATS Dedup Hits",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(jimini_nats_dedup_total[5m])", "legendFormat": "dedup/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 78 },
+      "id": 92,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Sweeper Activity",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (status) (rate(jimini_sweeper_runs_total[5m]))", "legendFormat": "{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 78 },
+      "id": 93,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Sweeper Re-driven",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(jimini_sweeper_entries_redriven_total[5m])", "legendFormat": "redriven/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 78 },
+      "id": 94,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Sweeper Failed",
+      "type": "stat",
+      "targets": [
+        { "expr": "jimini_sweeper_entries_failed_total", "legendFormat": "" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 86 },
+      "id": 110,
+      "title": "Replay Operations",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 87 },
+      "id": 95,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Replay Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (status) (rate(jimini_replay_total[5m]))", "legendFormat": "{{ status }}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 87 },
+      "id": 96,
+      "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" } },
+      "title": "Batch Sizes",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum(rate(jimini_batch_size_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(jimini_batch_size_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(jimini_batch_size_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["jimini-normalizer", "rust", "nats"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Jimini Normalizer — Overview",
+  "uid": "jimini-normalizer-overview"
+}

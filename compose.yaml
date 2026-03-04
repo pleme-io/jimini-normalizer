@@ -1,16 +1,83 @@
+# Local development infrastructure + services.
+# Production images are built via Nix: nix run .#build / nix run .#release
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose up postgres nats  # Start infra only (for local cargo run)
+#   cargo run                     # Run API locally (RUN_MODE=api)
+#   RUN_MODE=worker cargo run     # Run Worker locally
+#   cargo test                    # Run all tests (unit + integration)
+
 services:
-  jimini-normalizer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  postgres:
+    image: postgres:16-alpine
     ports:
-      - "8080:8080"
+      - "5432:5432"
     environment:
-      - PORT=8080
-      - RUST_LOG=info,jimini_normalizer=debug
+      POSTGRES_USER: jimini
+      POSTGRES_PASSWORD: jimini
+      POSTGRES_DB: jimini
     healthcheck:
-      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n' >&3 && cat <&3 | grep -q '\"ok\"'"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U jimini -d jimini"]
+      interval: 3s
       timeout: 3s
       retries: 10
       start_period: 5s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP monitoring
+    command: ["--jetstream", "--store_dir=/data", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    volumes:
+      - natsdata:/data
+
+  db-bootstrap:
+    build: .
+    command: ["db-bootstrap"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://jimini:jimini@postgres:5432/jimini
+
+  api:
+    build: .
+    command: ["jimini-normalizer"]
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    environment:
+      RUN_MODE: api
+      DATABASE_URL: postgres://jimini:jimini@postgres:5432/jimini
+      NATS_URL: nats://nats:4222
+    ports:
+      - "8080:8080"
+
+  worker:
+    build: .
+    command: ["jimini-normalizer"]
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    environment:
+      RUN_MODE: worker
+      DATABASE_URL: postgres://jimini:jimini@postgres:5432/jimini
+      NATS_URL: nats://nats:4222
+
+volumes:
+  pgdata:
+  natsdata:

@@ -1,0 +1,41 @@
+{{- if .Values.dashboards.enabled }}
+{{- $fullName := include "pleme-lib.fullname" . }}
+{{- $labels := include "pleme-lib.labels" . }}
+{{- $dashboardLabels := .Values.dashboards.labels | default dict }}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+{{- $name := $path | base | trimSuffix ".json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullName }}-dashboard-{{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+    {{- range $key, $val := $dashboardLabels }}
+    {{ $key }}: {{ $val | quote }}
+    {{- end }}
+data:
+  {{ $name }}.json: |-
+    {{- $.Files.Get $path | nindent 4 }}
+{{- if $.Values.dashboards.crd.enabled }}
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: {{ $fullName }}-{{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  {{- with $.Values.dashboards.crd.instanceSelector }}
+  instanceSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  folder: {{ $.Values.dashboards.crd.folder | default "General" | quote }}
+  configMapRef:
+    name: {{ $fullName }}-dashboard-{{ $name }}
+    key: {{ $name }}.json
+{{- end }}
+{{- end }}
+{{- end }}

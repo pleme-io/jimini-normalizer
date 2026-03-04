@@ -24,6 +24,9 @@ pub enum AppError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("database error: {0}")]
+    Database(String),
 }
 
 #[derive(Serialize)]
@@ -55,6 +58,14 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), None),
             AppError::Internal(msg) => {
                 tracing::error!(error = %msg, "internal server error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                    None,
+                )
+            }
+            AppError::Database(msg) => {
+                tracing::error!(error = %msg, "database error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal server error".to_string(),

@@ -1,0 +1,19 @@
+{{- if and .Values.worker.enabled .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "pleme-lib.fullname" . }}-worker
+  labels:
+    {{- include "pleme-lib.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  selector:
+    matchLabels:
+      {{- include "pleme-lib.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  endpoints:
+    - port: {{ .Values.monitoring.port }}
+      path: {{ .Values.monitoring.path }}
+      interval: {{ .Values.monitoring.interval }}
+      scrapeTimeout: {{ .Values.monitoring.scrapeTimeout }}
+{{- end }}

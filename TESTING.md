@@ -15,82 +15,104 @@ Each adapter's core transformation logic is tested against real fixture data:
 
 The staged normalization pipeline is tested for correctness and data integrity:
 
-- **Invalid input rejection:** Non-JSON input fails at the parse stage with a "parse error".
-- **Output validation:** Scores outside 0-100 range after scaling (e.g., input 15 on 0-10 scale → 150) are caught by output validation.
+- **Invalid input rejection:** Non-JSON input fails at the pre-transform boundary validation.
+- **Output validation:** Scores outside 0-100 range after scaling (e.g., input 15 on 0-10 scale → 150) are caught by post-transform boundary validation.
 - **Happy path:** Valid Provider B input passes all pipeline stages with scores in range.
 - **camelCase serialization:** Output JSON uses `patientId`, `assessmentDate`, `sourceProvider` — never snake_case.
 - **PHI non-propagation:** Patient names and dates of birth from input fixtures never appear in normalized output.
 
-### API Integration Tests (`tests/api_integration_test.rs`) — 8 tests
+### API Integration Tests (`tests/api_integration_test.rs`) — 19 tests
 
-Full HTTP round-trips via `axum-test`:
+Full HTTP round-trips via `axum-test` (requires PostgreSQL via `DATABASE_URL`):
 
-- **Health:** `GET /health` returns `{"status":"ok"}`.
-- **Normalize all 3 providers:** Each returns 200 with correct unified schema shape, correct `patientId`, `assessmentType`, score counts, and metadata.
-- **Unknown provider:** Returns 400.
-- **Round-trip persistence:** Normalize → `GET /assessments/:id` retrieves the same assessment by UUID.
-- **Batch partial failure:** `POST /normalize/batch` with one valid and one unknown provider returns 207 Multi-Status with `successes[1]` and `errors[1]`.
-- **Metrics:** `GET /metrics` returns Prometheus format with `jimini_http_requests_total` and `jimini_normalizations_total`.
+- **Health:** `GET /health` returns `{"status":"ok","database":"ok"}`
+- **Normalize all 3 providers:** Each returns 200 with correct unified schema shape, correct `patientId`, `assessmentType`, score counts, and metadata
+- **Score scaling:** Provider A and C scores verified at 0-10 → 0-100 (anxiety 7→70, social 4→40, etc.)
+- **PHI redaction:** Patient names, DOB, and PHI fields verified absent from all provider outputs
+- **camelCase output:** `patientId`, `assessmentType`, `sourceProvider` present; snake_case equivalents absent
+- **Unknown provider:** Returns 400
+- **Malformed input:** Returns 400 or 422
+- **Round-trip persistence:** Normalize → `GET /assessments/{id}` retrieves same assessment by UUID from Postgres
+- **List assessments:** `GET /assessments` returns non-empty array after normalization
+- **404 for missing:** `GET /assessments/{nonexistent-uuid}` returns 404
+- **Batch partial failure:** `POST /normalize/batch` with one valid and one unknown provider returns 207 Multi-Status
+- **Metrics:** `GET /metrics` returns Prometheus format with `jimini_http_requests_total` and `jimini_normalizations_total`
+- **Failed records:** Malformed input → `GET /failed?provider=provider_a` returns captured failure with full context
+- **Audit logs:** Successful normalize → `GET /audit/logs?provider=provider_b` returns audit trail with transformation steps
+- **Schema violations:** `GET /audit/violations` returns array
 
-### Compose Integration Tests (`tests/compose_integration_test.sh`) — 48 assertions
+## Boundary Validation Testing
 
-End-to-end smoke tests against the Docker Compose service:
+The pipeline now validates at two boundaries. Tests verify:
 
-- All 3 providers normalize correctly with score scaling verification
-- PHI fields never leak into responses (name, DOB)
-- camelCase output format verification
-- Error handling: unknown provider (400), malformed input (422)
-- Assessment CRUD: normalize → retrieve by ID → list all
-- Batch endpoint: 207 Multi-Status with mixed success/failure
-- Prometheus metrics endpoint serves expected counters
+1. **Pre-transform boundary** — Provider-specific schema validation catches structural issues before transformation:
+   - Provider A: missing `patient` or `assessment` object
+   - Provider B: missing `patient_id`, `assessment_type`, or no `score_*` keys
+   - Provider C: missing CSV columns, invalid UTF-8
 
-```bash
-# Run against already-running service
-./tests/compose_integration_test.sh
+2. **Post-transform boundary** — Centralized unified schema validation catches pipeline output issues:
+   - Score values outside 0-100 range
+   - Empty dimensions, missing assessmentType
+   - Wrong scale format (must be "0-100")
 
-# Build, start, test, and tear down automatically
-COMPOSE_UP=1 ./tests/compose_integration_test.sh
-```
+3. **Mismatch persistence** — Both boundaries write violations to `schema_violations` table with full raw input for audit and replay.
+
+## Failure Recovery Testing
+
+- **Failed record capture:** Every error path (parse, validation, schema mismatch, unknown provider, internal) results in a row in `failed_records` with the original raw input.
+- **Replay:** `POST /failed/{id}/replay` re-runs the pipeline on the stored raw input. On success, the assessment is persisted and the failed record is marked `replayed=true`.
+- **Batch failures:** Each item in a batch that fails is independently captured — one bad item doesn't affect others.
 
 ## What I'd Test With More Time
 
-- **Concurrency stress tests** — Parallel normalize requests to verify DashMap thread safety under load and check for race conditions in the in-memory store.
-- **Large batch processing** — Batches with 100+ records to verify memory behavior, response time degradation, and partial failure reporting at scale.
-- **Fuzz testing** — Property-based tests (proptest/quickcheck) generating random JSON/CSV payloads to find edge cases in parsing (empty strings, Unicode, extremely large numbers, negative scores, NaN/Infinity).
-- **Provider C edge cases** — CSV with mixed patient IDs across rows, missing columns, extra columns, different date formats, empty metric values.
-- **OTEL integration** — Verify distributed tracing spans are emitted correctly when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured (using a mock OTEL collector).
-- **PHI audit coverage** — Automated scanning of all response payloads to ensure no PII/PHI leaks beyond the explicit checks.
-- **Performance benchmarks** — Criterion benchmarks for each provider adapter to catch regressions in normalization throughput.
-- **Contract tests** — JSON Schema validation on API responses to enforce the unified output contract independently of the Rust types.
+- **Concurrency stress tests** — Parallel normalize requests to verify Postgres connection pool behavior under load.
+- **Outbox flush worker** — Verify messages drain from outbox to sink, retry on transient failures, and mark as failed after max retries.
+- **Retention purge** — Verify `POST /admin/purge` deletes records older than `RETENTION_DAYS` in correct dependency order.
+- **Large batch processing** — Batches with 100+ records to verify memory behavior and transaction semantics.
+- **Fuzz testing** — Property-based tests (proptest) generating random JSON/CSV payloads to find edge cases.
+- **Schema violation replay** — Verify that after fixing a provider adapter bug, previously failed records can be replayed successfully.
+- **OTEL integration** — Verify distributed tracing spans are emitted correctly.
+- **PHI audit coverage** — Automated scanning of all response payloads to ensure no PII/PHI leaks.
+- **Contract tests** — JSON Schema validation on API responses to enforce the unified output contract.
 
 ## How I Made This Testable
 
 1. **Trait-based provider abstraction** — `NormalizationProvider` is a trait with `validate_input()` and `normalize()` methods. Each provider implements pure transformations with no I/O, making them trivially unit-testable without mocking.
 
-2. **Pipeline as a pure function** — `NormalizationPipeline::run(&provider, &bytes)` is a static method that takes a provider and raw bytes, returning `Result<Vec<UnifiedAssessment>>`. No server, no state, no side effects — just input → output.
+2. **Pipeline as a pure function** — `NormalizationPipeline::run(&provider, &bytes)` returns `Result<PipelineResult, PipelineError>` with audit metadata and violation context. No server, no state — just input → output + audit trail.
 
-3. **Fixture-driven tests** — Real sample data in `fixtures/` matches the PDF specification exactly. Tests use `include_bytes!` / `include_str!` to load them at compile time. Adding a new provider means adding one fixture file and the corresponding test assertions.
+3. **Fixture-driven tests** — Real sample data in `fixtures/` matches the PDF specification exactly. Tests use `include_bytes!` / `include_str!` to load them at compile time.
 
-4. **Separation of HTTP from business logic** — Handlers are thin: they extract the request, call the pipeline, and format the response. All business logic lives in providers and the pipeline, tested independently. The API integration tests verify HTTP semantics, not transformation correctness.
+4. **Separation of HTTP from business logic** — Handlers are thin: they extract the request, call the pipeline, persist results, and format the response. The pipeline and providers are tested independently of HTTP.
 
-5. **In-memory state with standard interface** — `AppState` wraps a `DashMap` behind simple `store()` / `get()` / `list()` methods. The `axum-test` `TestServer` gets a fresh `AppState` per test, providing test isolation without external dependencies.
+5. **Database-backed state** — `AppState` wraps a `sea_orm::DatabaseConnection`. Integration tests connect to a real Postgres instance (via `DATABASE_URL`), providing realistic test conditions.
 
-6. **Compose tests as a separate layer** — The shell-based compose tests run against the real Docker image, catching packaging/deployment issues (wrong binary, missing libraries, environment variable misconfiguration) that Rust unit/integration tests cannot.
+6. **Compose tests as a separate layer** — Shell-based compose tests run against the real Docker image, catching packaging/deployment issues that Rust tests cannot.
 
 ## Running Tests
 
 ```bash
-# All Rust tests (18 tests)
+# Unit tests (no DB needed) — 10 tests
+cargo test --test provider_adapter_test --test pipeline_test
+
+# Integration tests (requires DATABASE_URL) — 19 tests
+DATABASE_URL=postgres://jimini:jimini@localhost:5432/jimini cargo test --test api_integration_test
+
+# All Rust tests (29 total)
 cargo test
 
-# Specific test suite
-cargo test --test provider_adapter_test
-cargo test --test pipeline_test
-cargo test --test api_integration_test
-
-# Compose integration tests (48 assertions)
-COMPOSE_UP=1 ./tests/compose_integration_test.sh
+# Via Nix (recommended)
+nix run .#test
 
 # Verbose output
 cargo test -- --nocapture
 ```
+
+## Migration Safety
+
+Migrations are classified in `migration-manifest.yaml` and validated at release time via `deploy/normalizer.yaml`:
+
+- All DDL uses `IF NOT EXISTS` / `IF EXISTS` guards for idempotency
+- `DROP TABLE` / `DROP COLUMN` / `RENAME` are forbidden without expand-contract pattern
+- Indexes use `IF NOT EXISTS` guards
+- Release gates validate migration safety before pushing images

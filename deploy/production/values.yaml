@@ -1,0 +1,148 @@
+# Production environment overrides for jimini-normalizer
+# Applied via FluxCD HelmRelease valuesFrom or Kustomize patch
+
+replicaCount: 2
+
+image:
+  tag: latest  # Pinned per-release in HelmRelease overlay
+
+env:
+  - name: RUN_MODE
+    value: "api"
+  - name: CONFIG_PATH
+    value: "/etc/jimini-normalizer/config.yaml"
+  - name: RUST_LOG
+    value: "info,jimini_normalizer=info"
+  - name: DEPLOYMENT_ENV
+    value: "production"
+
+worker:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+configMaps:
+  - name: jimini-normalizer-config
+    data:
+      config.yaml: |
+        server:
+          host: "0.0.0.0"
+          port: 8080
+          metrics_port: 9090
+        database:
+          max_connections: 20
+          min_connections: 5
+          connect_timeout_secs: 30
+          idle_timeout_secs: 600
+        nats:
+          stream_name: JIMINI_ASSESSMENTS
+          error_stream_name: JIMINI_ERRORS
+          consumer_name: jimini-normalizer
+          durable: true
+          pull_batch_size: 20
+          max_ack_pending: 2000
+          ack_wait_secs: 60
+          max_deliver: 10
+        batch:
+          buffer_size: 200
+          cleanup_after_batches: 10
+          max_concurrent_emits: 100
+        retry:
+          max_attempts: 5
+          base_delay_ms: 200
+          max_delay_ms: 10000
+        worker:
+          shutdown_timeout_secs: 60
+          max_concurrent: 20
+          health_check_interval_secs: 30
+        batch:
+          buffer_size: 200
+          cleanup_after_batches: 10
+          max_concurrent_emits: 100
+        retry:
+          max_attempts: 5
+          base_delay_ms: 200
+          max_delay_ms: 10000
+        retention:
+          days: 90
+        logging:
+          level: "info,jimini_normalizer=info"
+          format: "json"
+        pii:
+          enabled: true
+          patient_id_strategy: hash
+          raw_input_strategy: hash
+          provider_fields:
+            provider_a:
+              - field: name
+                strategy: redact
+              - field: dob
+                strategy: redact
+            provider_b:
+              - field: patient_name
+                strategy: redact
+          internal:
+            allow_internal_pii: true
+            store_patient_id_plaintext: true
+            store_raw_for_replay: true
+
+monitoring:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+prometheusRules:
+  enabled: true
+
+dashboards:
+  enabled: true
+  crd:
+    enabled: true
+    folder: "Jimini Normalizer"
+
+networkPolicy:
+  enabled: true
+  allowPrometheus: true
+  allowDns: true
+  additionalEgress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 4222
+          protocol: TCP
+
+pdb:
+  enabled: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+auditChecker:
+  enabled: true
+  schedule: "*/10 * * * *"
+
+retention:
+  enabled: true
+  schedule: "0 3 * * *"

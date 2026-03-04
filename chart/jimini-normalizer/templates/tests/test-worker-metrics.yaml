@@ -1,0 +1,49 @@
+{{- if .Values.worker.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "pleme-lib.fullname" . }}-test-worker-metrics
+  labels:
+    {{- include "pleme-lib.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-worker-metrics
+      image: curlimages/curl:8.5.0
+      command:
+        - /bin/sh
+        - -c
+        - |
+          echo "=== Testing Worker metrics endpoint ==="
+          METRICS=$(curl -sf --max-time 10 \
+            "http://{{ include "pleme-lib.fullname" . }}-worker.{{ .Release.Namespace }}.svc.cluster.local:9090/metrics")
+          if [ $? -ne 0 ]; then
+            echo "FAILED: Could not reach worker metrics endpoint"
+            exit 1
+          fi
+
+          echo "=== Checking worker health ==="
+          curl -sf --max-time 10 \
+            "http://{{ include "pleme-lib.fullname" . }}-worker.{{ .Release.Namespace }}.svc.cluster.local:9090/health"
+          if [ $? -ne 0 ]; then
+            echo "FAILED: Worker health endpoint unreachable"
+            exit 1
+          fi
+
+          echo "=== Checking for pipeline metrics ==="
+          PIPELINE_METRICS="jimini_worker_messages_total jimini_outbox_processed_total jimini_nats_publish_total jimini_postgres_sink_duration_seconds jimini_sweeper_runs_total"
+
+          for m in $PIPELINE_METRICS; do
+            if echo "$METRICS" | grep -q "^# HELP $m "; then
+              echo "  OK: $m"
+            else
+              echo "  MISSING: $m (may appear after first message)"
+            fi
+          done
+
+          echo "=== Worker metrics check PASSED ==="
+{{- end }}

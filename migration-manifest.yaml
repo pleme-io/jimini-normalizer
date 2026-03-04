@@ -1,0 +1,33 @@
+# migration-manifest.yaml — Classifies each migration for safety analysis
+#
+# Types:
+#   schema_only   — DDL only (CREATE TABLE, CREATE INDEX, ALTER ADD COLUMN)
+#   data_only     — DML only (INSERT, UPDATE, DELETE seed data)
+#   schema_and_data — Mixed DDL + DML (use sparingly)
+#   noop          — Empty/placeholder migration
+#
+# Ordering: schema_only migrations run before data_only at release time.
+# The SeaORM Migrator runs them in registration order within lib.rs.
+#
+# Safety rules:
+#   - All schema_only migrations MUST use IF NOT EXISTS / IF EXISTS guards
+#   - DROP TABLE / DROP COLUMN requires expand-contract pattern (3-phase)
+#   - Indexes MUST use CONCURRENTLY where supported
+#   - NOT NULL additions require: nullable → backfill → SET NOT NULL
+
+migrations:
+  - name: m20260303_000001_initial_schema
+    type: schema_only
+    description: >
+      Creates all 5 tables (assessments, normalization_audit_log, schema_violations,
+      outbox, failed_records) with indexes. Uses IF NOT EXISTS for idempotency.
+    tables_created:
+      - assessments
+      - normalization_audit_log
+      - schema_violations
+      - outbox
+      - failed_records
+    rollback_safe: true
+    notes: >
+      Initial schema — down() drops all tables in FK dependency order.
+      Safe to rollback since no production data exists at this point.

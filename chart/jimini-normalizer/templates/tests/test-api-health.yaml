@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "pleme-lib.fullname" . }}-test-api-health
+  labels:
+    {{- include "pleme-lib.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-api-health
+      image: curlimages/curl:8.5.0
+      command:
+        - /bin/sh
+        - -c
+        - |
+          echo "=== Testing API health endpoint ==="
+          curl -sf --max-time 10 \
+            "http://{{ include "pleme-lib.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:8080/health" \
+            -o /tmp/health.json && \
+          cat /tmp/health.json && echo "" && \
+          echo "=== API health check PASSED ==="

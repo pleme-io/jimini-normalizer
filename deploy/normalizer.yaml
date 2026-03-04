@@ -1,0 +1,69 @@
+# deploy/normalizer.yaml — Release orchestration config for jimini-normalizer
+# Read by substrate/forge at release time (nix run .#release)
+#
+# This file follows the same pattern as lilitu's deploy/backend.yaml
+
+service:
+  name: jimini-normalizer
+  namespace: jimini-normalizer-system
+  registry: ghcr.io/pleme-io/jimini-normalizer
+
+environments:
+  staging:
+    namespace: jimini-normalizer-system
+    database_url_env: DATABASE_URL
+    # K8s manifests live in the k8s repo, updated by CI
+    k8s_repo: pleme-io/k8s
+    k8s_path: clusters/plo/services/jimini-normalizer/staging
+
+  production:
+    namespace: jimini-normalizer-system
+    database_url_env: DATABASE_URL
+    k8s_repo: pleme-io/k8s
+    k8s_path: clusters/plo/services/jimini-normalizer/production
+
+# Migration safety — enforced at release time
+migrations:
+  # SeaORM migration crate location
+  crate_path: migration
+
+  # Safety guards: reject migrations containing these patterns
+  # Applied to all new migration files before release
+  forbidden_patterns:
+    - "DROP TABLE"
+    - "DROP COLUMN"
+    - "RENAME TABLE"
+    - "RENAME COLUMN"
+    - "ALTER.*TYPE"
+    - "TRUNCATE"
+
+  # Allowed escape hatch: expand-contract migrations that use these
+  # patterns must include a comment: -- EXPAND-CONTRACT: <reason>
+  expand_contract_marker: "EXPAND-CONTRACT"
+
+  # Migration ordering: schema migrations run before data migrations
+  manifest: migration-manifest.yaml
+
+# Image tagging
+image:
+  # Tag format: {arch}-{git-sha-short}
+  tag_format: "{arch}-{sha}"
+  architectures:
+    - amd64
+    - arm64
+
+# Release gates (ordered)
+release:
+  gates:
+    - name: lint
+      command: "nix run .#lint"
+    - name: fmt-check
+      command: "nix run .#fmt-check"
+    - name: unit-tests
+      command: "nix run .#test"
+    - name: build-images
+      command: "nix run .#build"
+    - name: migration-safety
+      description: "Verify no forbidden patterns in new migrations"
+    - name: push-images
+      command: "nix run .#push"

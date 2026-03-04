@@ -4,6 +4,10 @@ namespace: jimini-normalizer-system
 resources:
   - namespace.yaml
   - helmrelease.yaml
+  - ../../deploy/secrets/database-secret.yaml
+  - ../../deploy/secrets/sink-secret.yaml
+  - ../../deploy/secrets/nats-secret.yaml
+  - ../../deploy/secrets/pii-salt-secret.yaml
 labels:
   - pairs:
       app.kubernetes.io/part-of: nexus-platform

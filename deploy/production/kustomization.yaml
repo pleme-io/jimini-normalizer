@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: jimini-normalizer-production
+
+resources:
+  - ../flux/helmrelease.yaml
+  - ../flux/kustomization.yaml
+
+labels:
+  - pairs:
+      environment: production
+      app.kubernetes.io/part-of: jimini-normalizer
+    includeSelectors: false
+    includeTemplates: true
+
+patches:
+  # Override HelmRelease with production values
+  - target:
+      kind: HelmRelease
+      name: jimini-normalizer
+    patch: |
+      - op: replace
+        path: /metadata/namespace
+        value: jimini-normalizer-production
+      - op: add
+        path: /spec/valuesFiles
+        value:
+          - values.yaml
+          - production/values.yaml
+      - op: replace
+        path: /spec/values/env
+        value:
+          - name: RUN_MODE
+            value: "api"
+          - name: CONFIG_PATH
+            value: "/etc/jimini-normalizer/config.yaml"
+          - name: RUST_LOG
+            value: "info,jimini_normalizer=info"
+          - name: DEPLOYMENT_ENV
+            value: "production"
+      - op: replace
+        path: /spec/values/replicaCount
+        value: 2

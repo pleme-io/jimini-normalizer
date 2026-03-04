@@ -31,12 +31,110 @@ service:
       protocol: TCP
 
 env:
-  - name: PORT
-    value: "8080"
+  - name: RUN_MODE
+    value: "api"
+  - name: CONFIG_PATH
+    value: "/etc/jimini-normalizer/config.yaml"
   - name: RUST_LOG
     value: "info,jimini_normalizer=debug"
 
-envFrom: []
+# OpenTelemetry — auto-detected by pleme-observability when OTEL_EXPORTER_OTLP_ENDPOINT is set
+otel:
+  enabled: true
+  endpoint: "http://tempo.observability.svc.cluster.local:4318"
+
+# Secrets: DATABASE_URL from db secret, NATS_URL from nats secret
+# figment maps these well-known env vars into nested config automatically
+envFrom:
+  - secretRef:
+      name: jimini-normalizer-db
+  - secretRef:
+      name: jimini-normalizer-nats
+  - secretRef:
+      name: jimini-normalizer-pii-salt
+
+# ConfigMap with figment config.yaml — mounted at /etc/jimini-normalizer/
+configMaps:
+  - name: jimini-normalizer-config
+    data:
+      config.yaml: |
+        server:
+          host: "0.0.0.0"
+          port: 8080
+          metrics_port: 9090
+        database:
+          max_connections: 10
+          min_connections: 2
+          connect_timeout_secs: 30
+          idle_timeout_secs: 600
+        nats:
+          stream_name: JIMINI_ASSESSMENTS
+          error_stream_name: JIMINI_ERRORS
+          consumer_name: jimini-normalizer
+          durable: true
+          pull_batch_size: 10
+          max_ack_pending: 1000
+          ack_wait_secs: 30
+          max_deliver: 5
+        worker:
+          shutdown_timeout_secs: 30
+          max_concurrent: 10
+          health_check_interval_secs: 10
+        batch:
+          buffer_size: 100
+          cleanup_after_batches: 10
+          max_concurrent_emits: 50
+        retry:
+          max_attempts: 3
+          base_delay_ms: 100
+          max_delay_ms: 5000
+        outbox:
+          stream_name: JIMINI_OUTBOX
+          consumer_name: jimini-outbox
+          enabled_sinks: []
+          sweeper_interval_secs: 60
+          sweeper_stale_after_secs: 300
+          duplicate_window_secs: 600
+        sinks: []
+        # Example external sink configuration:
+        # sinks:
+        #   - name: vector-prod
+        #     sink_type: http_json
+        #     endpoint: "http://vector.observability:8080/events"
+        #     request_timeout_secs: 10
+        #     headers: {}
+        retention:
+          days: 90
+        logging:
+          level: "info,jimini_normalizer=debug"
+          format: "json"
+        pii:
+          enabled: true
+          patient_id_strategy: hash
+          raw_input_strategy: hash
+          provider_fields:
+            provider_a:
+              - field: name
+                strategy: redact
+              - field: dob
+                strategy: redact
+            provider_b:
+              - field: patient_name
+                strategy: redact
+          internal:
+            allow_internal_pii: false
+            store_patient_id_plaintext: false
+            store_raw_for_replay: false
+
+volumeMounts:
+  - name: config
+    mountPath: /etc/jimini-normalizer
+    readOnly: true
+
+volumes:
+  - name: config
+    configMap:
+      name: jimini-normalizer-config
 
 resources:
   requests:
@@ -84,6 +182,18 @@ securityContext:
   capabilities:
     drop:
       - ALL
+
+# Worker deployment — same image, RUN_MODE=worker
+worker:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 
 # Monitoring — ServiceMonitor for Prometheus scrape
 monitoring:
@@ -182,13 +292,208 @@ prometheusRules:
           annotations:
             summary: "jimini-normalizer normalization failure rate exceeds 10%"
 
+    - name: jimini-normalizer.audit
+      rules:
+        # Unreplayed failed records accumulating
+        - alert: JiminiNormalizerFailedRecordsPending
+          expr: jimini_failed_records_pending > 10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "jimini-normalizer has {{ $value }} unreplayed failed records"
+            description: "Failed records are accumulating. Investigate via GET /failed and replay via POST /failed/{id}/replay."
+
+        # Critical failed record backlog
+        - alert: JiminiNormalizerFailedRecordsCritical
+          expr: jimini_failed_records_pending > 50
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "jimini-normalizer CRITICAL — {{ $value }} unreplayed failed records"
+
+        # Schema violations spike (last hour)
+        - alert: JiminiNormalizerSchemaViolations
+          expr: jimini_schema_violations_recent > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "jimini-normalizer has {{ $value }} schema violations in the last hour"
+            description: "Check GET /audit/violations for details. May indicate provider format changes."
+
+        # Audit checker CronJob failure
+        - alert: JiminiNormalizerAuditCheckerFailed
+          expr: |
+            kube_job_status_failed{job_name=~"jimini-normalizer-audit-checker.*"} > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "jimini-normalizer audit checker CronJob failed"
+            description: "The audit checker detected critical issues in the database. Check CronJob logs."
+
+    - name: jimini-normalizer.nats
+      rules:
+        # NATS consumer lag (messages pending delivery)
+        - alert: JiminiNormalizerNatsConsumerLag
+          expr: |
+            nats_consumer_num_pending{stream_name=~"JIMINI_.*"} > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NATS consumer lag: {{ $value }} pending messages"
+            description: "Worker may be falling behind. Check worker health and DB connectivity."
+
+        # NATS consumer lag critical
+        - alert: JiminiNormalizerNatsConsumerLagCritical
+          expr: |
+            nats_consumer_num_pending{stream_name=~"JIMINI_.*"} > 1000
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NATS consumer CRITICAL lag: {{ $value }} pending messages"
+
+        # NATS redelivery rate high (messages failing to process)
+        - alert: JiminiNormalizerNatsHighRedelivery
+          expr: |
+            rate(nats_consumer_num_redelivered{stream_name=~"JIMINI_.*"}[5m]) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High NATS message redelivery rate"
+            description: "Messages are failing to process and being redelivered. Check worker logs."
+
+    - name: jimini-normalizer.pipeline
+      rules:
+        # Recording rules
+        - record: jimini_normalizer:postgres_sink_error_rate_5m
+          expr: sum(rate(jimini_postgres_sink_errors_total[5m]))
+
+        - record: jimini_normalizer:nats_publish_error_rate_5m
+          expr: |
+            sum(rate(jimini_nats_publish_total{status="error"}[5m]))
+            / sum(rate(jimini_nats_publish_total[5m]))
+
+        - record: jimini_normalizer:sink_delivery_error_rate_5m
+          expr: |
+            sum(rate(jimini_sink_delivery_total{status="error"}[5m]))
+            / sum(rate(jimini_sink_delivery_total[5m]))
+
+        # Alerts
+        - alert: JiminiOutboxBacklogGrowing
+          expr: jimini_outbox_pending > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Outbox backlog growing: {{ $value }} pending"
+
+        - alert: JiminiOutboxBacklogCritical
+          expr: jimini_outbox_pending > 1000
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Outbox backlog CRITICAL: {{ $value }} pending"
+
+        - alert: JiminiPostgresSinkErrors
+          expr: rate(jimini_postgres_sink_errors_total[5m]) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PostgresSink errors detected"
+            description: "PostgresSink is failing to persist assessments. Check DB connectivity."
+
+        - alert: JiminiSinkDeliveryFailing
+          expr: rate(jimini_sink_delivery_total{status="error"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "External sink delivery failing"
+
+        - alert: JiminiSweeperFailing
+          expr: rate(jimini_sweeper_runs_total{status="error"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Reconciliation sweeper encountering errors"
+
+        - alert: JiminiDeadLettersAccumulating
+          expr: rate(jimini_dead_letters_total[5m]) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Dead letters accumulating from batch emit"
+            description: "Messages are failing to publish to NATS after all retries."
+
+        - alert: JiminiOutboxWorkerCrashLoop
+          expr: rate(jimini_outbox_restarts_total[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Outbox worker crash-looping"
+            description: "Outbox worker is restarting frequently. Check NATS and DB connectivity."
+
+        - alert: JiminiPoisonMessages
+          expr: |
+            rate(jimini_worker_messages_total{status="poison"}[5m]) > 0
+            or rate(jimini_outbox_processed_total{status="poison"}[5m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Poison messages detected in pipeline"
+            description: "Messages are failing to deserialize. Check upstream producer format."
+
+        - alert: JiminiNatsPublishErrors
+          expr: rate(jimini_nats_publish_total{status="error"}[5m]) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NATS publish errors detected"
+            description: "Assessments or errors are failing to publish to NATS."
+
+        - alert: JiminiPostgresSinkSlow
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(jimini_postgres_sink_duration_seconds_bucket[5m])) by (le)
+            ) > 1.0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "PostgresSink P99 latency exceeds 1s"
+
 # Network Policy
 networkPolicy:
   enabled: true
   allowPrometheus: true
   allowDns: true
   additionalIngress: []
-  additionalEgress: []
+  additionalEgress:
+    # Postgres
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 5432
+          protocol: TCP
+    # NATS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 4222
+          protocol: TCP
 
 # PDB
 pdb:
@@ -209,8 +514,29 @@ downwardApi:
 istio:
   enabled: false
 
-# ConfigMaps
-configMaps: []
+# Audit checker CronJob — scans DB for failed records, schema violations
+auditChecker:
+  enabled: true
+  schedule: "*/10 * * * *"  # Every 10 minutes
+
+# Retention CronJob — purges data older than retention.days
+retention:
+  enabled: true
+  schedule: "0 3 * * *"  # Daily at 03:00 UTC
+
+# Grafana dashboards — provisioned via ConfigMap sidecar or GrafanaDashboard CRD
+dashboards:
+  enabled: true
+  # Label that Grafana sidecar watches for auto-provisioning
+  labels:
+    grafana_dashboard: "1"
+  # GrafanaDashboard CRD — requires grafana-operator
+  crd:
+    enabled: true
+    folder: "Jimini Normalizer"
+    instanceSelector:
+      matchLabels:
+        dashboards: grafana
 
 # Additional
 nodeSelector: {}
