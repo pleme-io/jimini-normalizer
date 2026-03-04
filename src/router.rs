@@ -13,6 +13,8 @@ use crate::state::AppState;
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health::health))
+        .route("/healthz", get(health::healthz))
+        .route("/readyz", get(health::readyz))
         .route("/normalize", post(normalize::normalize))
         .route("/normalize/batch", post(normalize::normalize_batch))
         .route("/assessments", get(assessments::list_assessments))
