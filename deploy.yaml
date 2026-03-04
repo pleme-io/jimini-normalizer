@@ -1,0 +1,43 @@
+# jimini-normalizer - Multi-Provider Data Normalization Service
+name: jimini-normalizer
+
+release:
+  services:
+    - name: jimini-normalizer
+      type: rust
+      path: .
+  # Deploy staging first, then production
+  environment_order:
+    - staging
+    - production
+  active_environments:
+    - staging
+
+# Environment-specific configuration
+environments:
+  staging:
+    namespace: jimini-normalizer-staging
+  production:
+    namespace: jimini-normalizer-production
+
+# GitOps: separate k8s manifests repo
+k8s:
+  local: ../k8s
+  branch: main
+
+# Deployment settings
+deployment:
+  skip_flux_health_check: true
+  wait_for_rollout: false
+
+# No GraphQL federation (REST-only service)
+federation:
+  enabled: false
+
+# No search sync
+novasearch:
+  enabled: false
+
+# Migration handled by Shinka operator (not forge)
+migration:
+  shinka_gating: false
