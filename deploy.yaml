@@ -16,8 +16,10 @@ release:
 # Environment-specific configuration
 environments:
   staging:
+    cluster: plo
     namespace: jimini-normalizer-staging
   production:
+    cluster: plo
     namespace: jimini-normalizer-production
 
 # GitOps: separate k8s manifests repo
@@ -41,3 +43,10 @@ novasearch:
 # Migration handled by Shinka operator (not forge)
 migration:
   shinka_gating: false
+
+# K8s manifest paths (relative to k8s repo root)
+manifests:
+  staging:
+    kustomization: clusters/plo/products/jimini-normalizer/staging/kustomization.yaml
+  production:
+    kustomization: clusters/plo/products/jimini-normalizer/production/kustomization.yaml
