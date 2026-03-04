@@ -36,7 +36,7 @@
         registry = "ghcr.io/pleme-io/jimini-normalizer";
         packageName = "jimini-normalizer";
         namespace = "jimini-normalizer-system";
-        architectures = ["amd64" "arm64"];
+        architectures = ["amd64"];
         moduleDir = null;
         nixosModuleFile = null;
         serviceType = "rest";
