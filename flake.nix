@@ -23,13 +23,17 @@
       url = "github:nix-community/crate2nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    devenv = {
+      url = "github:cachix/devenv";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, substrate, forge, crate2nix, ... }:
+  outputs = { self, nixpkgs, substrate, forge, crate2nix, devenv, ... }:
     let
       # Base service flake from substrate (provides Rust toolchain, devShell, Docker image, etc.)
       base = (import "${substrate}/lib/rust-service-flake.nix" {
-        inherit nixpkgs substrate forge crate2nix;
+        inherit nixpkgs substrate forge crate2nix devenv;
       }) {
         inherit self;
         serviceName = "jimini-normalizer";
